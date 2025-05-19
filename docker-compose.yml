@@ -1,0 +1,60 @@
+services:
+  cubetrek-dev:
+    build: .
+    container_name: cubetrek-dev
+    restart: no
+    depends_on: 
+      cubetrekdb:
+        condition: service_healthy
+    ports:
+      - 8080:8080
+    volumes:
+      - ./cubetrek_data/logs:/logs
+      - ./cubetrek_data/maps:/maps
+    environment:
+      #!!!!!!!!!!!!!! Things you definitely need to change !!!!!!!!!!!!!!
+      # Maptiler API key is required
+      - MAPTILER_API_KEY=your_maptiler_api_key
+        ############ Things you should probably change ######################
+      # Change this to the URL you want to use to reach cubetrek
+      - CUBETREK_ADDRESS=http://localhost:8080
+      # Google Maps and Cesium required to have 3d follow along enabled
+      - GOOGLEMAP_API_KEY=your_googlemap_api_key
+      - CESIUM_ION_ACCESS_TOKEN=your_cesium_ion_access_token
+      # Logging formatting and timezone
+      - LOGGING_DATE_FORMAT=yyyy-MM-dd HH:mm:ss.SSS,America/Los_Angeles
+      # Database configurations
+      # This must match POSTGRES_USER in db container
+      - SPRING_DATASOURCE_USERNAME=cubetrek_postgres
+      # This must match POSTGRES_PASSWORD in db container
+      - SPRING_DATASOURCE_PASSWORD=my-super-secure-password
+      ############ Things you might change if you know what you're doing ##
+      # Make sure the name (e.g. "cubetrekdb") matches the service name for the container
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://cubetrekdb:5432/cubetrek
+      ############ Check .env file for other API keys and parameters. #####
+      # Otherwise see application.properties and application-production.properties
+    # This file contains the environment variables you probably don't need to set
+    env_file: production.env
+
+  cubetrekdb:
+    image: postgis/postgis:17-3.5
+    container_name: cubetrekdb
+    env_file: production.env
+    environment:
+      - POSTGRES_DB=cubetrek
+      # This must match SPRING_DATASOURCE_USERNAME
+      - POSTGRES_USER=cubetrek_postgres
+      # This must match SPRING_DATASOURCE_PASSWORD
+      - POSTGRES_PASSWORD=my-super-secure-password
+    volumes:
+     - ./cubetrek_data/db/postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    # This is required for cubetrek depends on service_healthy. Ensure DB is 
+    healthcheck:
+      # For some reason using variables for the username and database here don't work
+      # Accordingly, I've left them hardcoded in duplicate throughout this file.
+      # Ideally they could be typed just once in the env file
+      test: ["CMD-SHELL", "pg_isready -U cubetrek_postgres -d cubetrek"]
+      interval: 10s
+      retries: 5
+      timeout: 10s
