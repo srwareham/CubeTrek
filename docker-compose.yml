@@ -6,8 +6,6 @@ services:
     depends_on: 
       cubetrekdb:
         condition: service_healthy
-    networks:
-      - cubetrek
     ports:
       - 8080:8080
     volumes:
@@ -48,12 +46,8 @@ services:
       - POSTGRES_USER=cubetrek_postgres
       # This must match SPRING_DATASOURCE_PASSWORD
       - POSTGRES_PASSWORD=my-super-secure-password
-    networks:
-     - cubetrek
     volumes:
      - ./cubetrek_data/db/postgres_data:/var/lib/postgresql/data
-    #ports: #the ports dont need to be opened on host because cubetrek can access in the same docker network
-    #  - "5432:5432"
     restart: unless-stopped
     # This is required for cubetrek depends on service_healthy. Ensure DB is 
     healthcheck:
@@ -64,7 +58,3 @@ services:
       interval: 10s
       retries: 5
       timeout: 10s
-
-networks:
-  cubetrek:
-    driver: bridge 
