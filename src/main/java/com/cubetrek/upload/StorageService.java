@@ -185,7 +185,9 @@ public class StorageService {
         List<TrackSegment> segmentList = null;
 
         try {
-            segmentList = new ArrayList<>(GPXWorker.reduceTrackSegments(track, 2).getSegments());
+            Track reducedTrack = GPXWorker.reduceTrackSegments(track, 2);
+            segmentList = new ArrayList<>(reducedTrack.getSegments());
+            track = reducedTrack; // Update main track object
         } catch (IllegalArgumentException e) {
             logger.info("File upload - File cannot be read or track is empty - by User "+user.getId());
             if (isFitFile)
@@ -219,13 +221,15 @@ public class StorageService {
             segmentList.sort(Comparator.comparing(segment -> segment.getPoints().get(0).getTime().get()));
         }
 
-        trackData.setBBox(GPXWorker.getTrueTrackBoundingBox(segmentList));
+        trackData.setBBox(GPXWorker.getTrueTrackBoundingBox(track));
 
         boolean allWayPointsHaveElevation = segmentList.stream().allMatch(segment -> segment.points().allMatch(point -> point.getElevation().isPresent()));
         //check if elevation data is provided
         if (!allWayPointsHaveElevation) {
             try {
-                segmentList = GPXWorker.replaceElevationData(segmentList, hgtFileLoader_1DEM, hgtFileLoader_3DEM);
+                Track trackWithReplacedElevation = GPXWorker.replaceElevationData(track, hgtFileLoader_1DEM, hgtFileLoader_3DEM);
+                segmentList = new ArrayList<>(trackWithReplacedElevation.getSegments());
+                track = trackWithReplacedElevation; // Update main track object
                 trackData.setHeightSource(TrackData.Heightsource.CALCULATED);
             } catch (IOException e) {
                 logger.error("File upload - Failed because reading Elevation Data IOException - by User "+user.getId(), e);
@@ -233,7 +237,9 @@ public class StorageService {
             }
         } else {
             try {
-                segmentList = GPXWorker.normalizeElevationData(segmentList, hgtFileLoader_1DEM, hgtFileLoader_3DEM);
+                Track trackWithNormalizedElevation = GPXWorker.normalizeElevationData(track, hgtFileLoader_1DEM, hgtFileLoader_3DEM);
+                segmentList = new ArrayList<>(trackWithNormalizedElevation.getSegments());
+                track = trackWithNormalizedElevation; // Update main track object
                 trackData.setHeightSource(TrackData.Heightsource.NORMALIZED);
             } catch (IOException e) {
                 logger.error("File upload - Failed because reading Elevation Data IOException - by User "+user.getId(), e);
@@ -300,7 +306,7 @@ public class StorageService {
         trackData.setDatetrack((track.getSegments().get(0).getPoints().get(0).getTime().orElse(Instant.now())).atZone(zoneId));
         trackData.setTimezone(user.getTimezone());
 
-        GPXWorker.TrackSummary trackSummary = GPXWorker.getTrackSummary(segmentList);
+        GPXWorker.TrackSummary trackSummary = GPXWorker.getTrackSummary(track);
         trackData.setElevationup(trackSummary.elevationUp);
         trackData.setElevationdown(trackSummary.elevationDown);
         trackData.setDuration(trackSummary.duration);
@@ -462,9 +468,46 @@ public class StorageService {
 
         TrackData trackData = trackDataRepository.getReferenceById(trackId);
         TrackGeodata trackGeodata = trackData.getTrackgeodata();
+        TrackRawfile rawfile = trackData.getTrackrawfile();
+        Track trackForRecalculation = null;
+
+        if (rawfile == null || rawfile.getOriginalgpx() == null || rawfile.getOriginalfilename() == null) {
+            logger.error("Recalculate Height - Rawfile data is missing for trackId " + trackId);
+            return new UpdateTrackmetadataResponse(false);
+        }
+
+        GPXWorker.ConversionOutput conversionOutputRecalc;
+        try (InputStream is = new ByteArrayInputStream(rawfile.getOriginalgpx())) {
+            String lowerCaseFilename = rawfile.getOriginalfilename().toLowerCase(Locale.ROOT);
+            if (lowerCaseFilename.endsWith("gpx")) {
+                conversionOutputRecalc = GPXWorker.loadGPXTracks(is);
+            } else if (lowerCaseFilename.endsWith("fit")) {
+                conversionOutputRecalc = GPXWorker.loadFitTracks(is);
+            } else {
+                logger.error("Recalculate Height - Unknown file type for trackId " + trackId + ": " + rawfile.getOriginalfilename());
+                return new UpdateTrackmetadataResponse(false);
+            }
+
+            if (conversionOutputRecalc != null && !conversionOutputRecalc.trackList.isEmpty()) {
+                trackForRecalculation = conversionOutputRecalc.trackList.get(0);
+                // Optional: Apply same reduction as in store method if getElevationDataFromHGT expects that.
+                // trackForRecalculation = GPXWorker.reduceTrackSegments(trackForRecalculation, 2);
+            } else {
+                logger.error("Recalculate Height - Could not parse raw file or tracklist empty for trackId " + trackId);
+                return new UpdateTrackmetadataResponse(false);
+            }
+        } catch (IOException e) {
+            logger.error("Recalculate Height - IOException while parsing raw file for trackId " + trackId, e);
+            return new UpdateTrackmetadataResponse(false);
+        }
+
+        if (trackForRecalculation == null || trackForRecalculation.isEmpty()) {
+            logger.error("Recalculate Height - Parsed track is null or empty for trackId " + trackId);
+            return new UpdateTrackmetadataResponse(false);
+        }
 
         try {
-            ArrayList<short[]> newElevationData = GPXWorker.getElevationDataFromHGT(trackGeodata.getMultiLineString(), hgtFileLoader_1DEM, hgtFileLoader_3DEM);
+            ArrayList<short[]> newElevationData = GPXWorker.getElevationDataFromHGT(trackForRecalculation, hgtFileLoader_1DEM, hgtFileLoader_3DEM);
             trackGeodata.setAltitudes(convertShort2Int(newElevationData));
 
             int highestpoint = -400000;
