@@ -49,8 +49,8 @@ public class RegistrationController {
     @Autowired
     NewsletterSignupRepository newsletterSignupRepository;
 
-    @Value("${cloudflare.turnstyle.secret}")
-    String cloudflareTurnstyleSecret;
+    // @Value("${cloudflare.turnstyle.secret}")
+    // String cloudflareTurnstyleSecret;
 
     Logger logger = LoggerFactory.getLogger(RegistrationController.class);
 
@@ -68,29 +68,31 @@ public class RegistrationController {
         if (bindingResult.hasErrors())
             return "registration";
 
-        try {
-            if (cf_turnstile_response.equals("none")) {
-                logger.error("Error Registration: no Cloudflare Turnstile transferred for Username: "+userDto.getName()+", email "+userDto.getEmail()+ ", IP "+request.getHeader("X-FORWARDED-FOR")); //"X-FORWARDED-FOR" contains the originating IP from NGINX
-                throw new ExceptionHandling.UnnamedException("Something went wrong :(", "Could not finalize Registration, you might be a bot. Did you click the Human Verification button?");
-            }
-            HttpResponse<String> response = verifyCloudflareTurnstile(cf_turnstile_response, request.getHeader("X-FORWARDED-FOR"));
-            if (response.statusCode()!=200) {
-                logger.error("Error Registration: Cloudflare Turnstile returns not 200: "+response.statusCode()+"; "+response.body());
-                throw new ExceptionHandling.UnnamedException("Something went wrong :(", "Could not finalize Registration, please try again later or send an email to contact@cubetrek.com");
-            }
-            boolean turnstile_success = (new ObjectMapper()).readTree(response.body()).get("success").asBoolean(false);
-            if (!turnstile_success) {
-                logger.error("Error Registration: Cloudflare Turnstile returns not true: "+response.body());
-                throw new ExceptionHandling.UnnamedException("Something went wrong :(", "Could not finalize Registration, please try again later or send an email to contact@cubetrek.com");
-            }
-        } catch (URISyntaxException | IOException | InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        // try {
+        //     if (cf_turnstile_response.equals("none")) {
+        //         logger.error("Error Registration: no Cloudflare Turnstile transferred for Username: "+userDto.getName()+", email "+userDto.getEmail()+ ", IP "+request.getHeader("X-FORWARDED-FOR")); //"X-FORWARDED-FOR" contains the originating IP from NGINX
+        //         throw new ExceptionHandling.UnnamedException("Something went wrong :(", "Could not finalize Registration, you might be a bot. Did you click the Human Verification button?");
+        //     }
+        //     HttpResponse<String> response = verifyCloudflareTurnstile(cf_turnstile_response, request.getHeader("X-FORWARDED-FOR"));
+        //     if (response.statusCode()!=200) {
+        //         logger.error("Error Registration: Cloudflare Turnstile returns not 200: "+response.statusCode()+"; "+response.body());
+        //         throw new ExceptionHandling.UnnamedException("Something went wrong :(", "Could not finalize Registration, please try again later or send an email to contact@cubetrek.com");
+        //     }
+        //     boolean turnstile_success = (new ObjectMapper()).readTree(response.body()).get("success").asBoolean(false);
+        //     if (!turnstile_success) {
+        //         logger.error("Error Registration: Cloudflare Turnstile returns not true: "+response.body());
+        //         throw new ExceptionHandling.UnnamedException("Something went wrong :(", "Could not finalize Registration, please try again later or send an email to contact@cubetrek.com");
+        //     }
+        // } catch (URISyntaxException | IOException | InterruptedException e) {
+        //     throw new RuntimeException(e);
+        // }
 
 
         try {
             Users registered = userRegistrationService.register(userDto);
-            eventPublisher.publishEvent(new OnRegistrationCompleteEvent(registered));
+            // eventPublisher.publishEvent(new OnRegistrationCompleteEvent(registered)); // Disable email confirmation
+            registered.setEnabled(true); // Enable user directly
+            userRegistrationService.saveRegisteredUser(registered); // Save the updated user
         } catch (ExceptionHandling.UserRegistrationException ex) { //the email address exists already
             bindingResult.addError(new FieldError("user", "email", ex.msg));
             return "registration";
@@ -102,6 +104,7 @@ public class RegistrationController {
         return "successRegister";
     }
 
+    /*
     public HttpResponse<String> verifyCloudflareTurnstile(String cf_turnstyle_response, String remoteip) throws URISyntaxException, IOException, InterruptedException {
         //See https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
         HttpClient httpClient = HttpClient.newHttpClient();
@@ -120,7 +123,7 @@ public class RegistrationController {
                 .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
-
+    */
 
     @GetMapping("/registrationConfirm")
     public String confirmRegistration(WebRequest request, Model model, @RequestParam("token") String token) {
