@@ -93,7 +93,6 @@ public class TrackViewerService {
                 .setZoomlevel(calculateZoomlevel(boundingBox))
                 .setEnclosement(true)
                 .setTextureUrl("map/"+maptype+"/%d/%d/%d.png")
-                .setHeightOffset(20)
                 .build();
         return gltfDatafile.getString();
     }
