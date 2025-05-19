@@ -82,7 +82,7 @@ public class Users implements UserDetails {
 
     @Getter
     @Setter
-    @Column(name = "sharing", columnDefinition = "integer default 0") //default 0=private
+    @Column(name = "sharing", columnDefinition = "integer") //default 0=private
     private TrackData.Sharing sharing;
 
     @Setter
