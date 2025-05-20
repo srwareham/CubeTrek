@@ -1,8 +1,8 @@
 services:
   cubetrek-dev:
     build: .
-    container_name: cubetrek-dev
-    restart: no
+    container_name: cubetrek
+    restart: unless-stopped
     depends_on: 
       cubetrekdb:
         condition: service_healthy
